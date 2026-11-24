@@ -6,7 +6,7 @@ require (
 	github.com/auth0/go-auth0 v1.54.0
 	github.com/hashicorp/go-hclog v1.6.3
 	github.com/hashicorp/vault/sdk v0.26.0
-	golang.org/x/oauth2 v0.37.0
+	golang.org/x/oauth2 v0.38.0
 )
 
 require (
