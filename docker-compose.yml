@@ -1,0 +1,25 @@
+services:
+  vault:
+    image: hashicorp/vault:${VAULT_VERSION:-2.1.1}
+    command: >
+      server -dev -dev-root-token-id=root
+      -dev-listen-address=0.0.0.0:8200 -dev-plugin-dir=/vault/plugins
+    cap_add: [IPC_LOCK]
+    ports: ["8200:8200"]
+    volumes: ["./bin/linux:/vault/plugins:ro"]
+    environment:
+      VAULT_ADDR: http://127.0.0.1:8200
+    healthcheck:
+      test: ["CMD", "vault", "status"]
+      interval: 2s
+      retries: 15
+
+  # Mounts the plugin, auto-registered by dev mode from the plugin dir.
+  init:
+    image: hashicorp/vault:${VAULT_VERSION:-2.1.1}
+    depends_on:
+      vault: {condition: service_healthy}
+    environment:
+      VAULT_ADDR: http://vault:8200
+      VAULT_TOKEN: root
+    entrypoint: ["vault", "secrets", "enable", "-path=auth0", "vault-plugin-secrets-auth0"]
