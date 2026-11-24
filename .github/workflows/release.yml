@@ -1,0 +1,83 @@
+name: Release
+
+# Two ways to cut a release:
+#   * push a v* tag          -> build that exact tag (manual / seed releases)
+#   * push to main           -> derive the next semver from Conventional Commits
+#                               since the last tag, create it, and build it
+# Docs/chore/ci-only pushes to main produce no release.
+#
+# Every release is gated on the full CI (unit, lint, builds, Vault matrix);
+# nothing is tagged or published if it fails.
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+
+permissions: {}
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # Decide whether this push produces a release, and which tag.
+  plan:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      tag: ${{ steps.tagged.outputs.tag || steps.next.outputs.new_tag }}
+    steps:
+      - name: Pushed tag
+        id: tagged
+        if: github.ref_type == 'tag'
+        run: echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        if: github.ref == 'refs/heads/main'
+        with:
+          fetch-depth: 0
+      - name: Compute next version (Conventional Commits)
+        id: next
+        if: github.ref == 'refs/heads/main'
+        uses: mathieudutour/github-tag-action@a22cf08638b34d5badda920f9daf6e72c477b07b # v6.2
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          release_branches: main
+          default_bump: false
+          dry_run: true # compute only; the release job creates the tag
+
+  ci:
+    needs: plan
+    if: needs.plan.outputs.tag != ''
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+
+  release:
+    needs: [plan, ci]
+    if: needs.plan.outputs.tag != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          fetch-depth: 0
+      - name: Create and push tag
+        if: github.ref_type != 'tag'
+        run: |
+          # A lightweight tag on HEAD: GoReleaser requires the current tag to
+          # point at the built commit, which annotated tags from the action break.
+          git tag "${{ needs.plan.outputs.tag }}"
+          git push origin "${{ needs.plan.outputs.tag }}"
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
+        with:
+          version: "~> v2"
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GORELEASER_CURRENT_TAG: ${{ needs.plan.outputs.tag }}
