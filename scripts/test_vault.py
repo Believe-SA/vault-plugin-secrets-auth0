@@ -6,11 +6,11 @@ exercises every path. Auth0 is never reached: creds reads must fail cleanly.
 """
 
 import hashlib
+import http.client
 import json
 import os
 import sys
-import urllib.error
-import urllib.request
+from urllib.parse import urlsplit
 
 ADDR = os.environ.get("VAULT_ADDR", "http://127.0.0.1:8200")
 TOKEN = os.environ.get("VAULT_TOKEN", "root")
@@ -19,19 +19,22 @@ VERSION = os.environ["PLUGIN_VERSION"]
 
 
 def call(method, path, data=None):
-    req = urllib.request.Request(
-        f"{ADDR}/v1/{path}",
-        method=method,
-        data=json.dumps(data).encode() if data is not None else None,
-        headers={"X-Vault-Token": TOKEN},
-    )
+    # http.client only speaks HTTP(S), unlike urllib (file://...).
+    url = urlsplit(ADDR)
+    conn_class = http.client.HTTPSConnection if url.scheme == "https" else http.client.HTTPConnection
+    conn = conn_class(url.netloc, timeout=30)
     try:
-        with urllib.request.urlopen(req) as resp:
-            body = resp.read()
-            return resp.status, json.loads(body) if body else {}
-    except urllib.error.HTTPError as e:
-        body = e.read()
-        return e.code, json.loads(body) if body else {}
+        conn.request(
+            method,
+            f"/v1/{path}",
+            body=json.dumps(data) if data is not None else None,
+            headers={"X-Vault-Token": TOKEN},
+        )
+        resp = conn.getresponse()
+        body = resp.read()
+        return resp.status, json.loads(body) if body else {}
+    finally:
+        conn.close()
 
 
 def ok(method, path, data=None):
