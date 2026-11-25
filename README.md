@@ -96,6 +96,30 @@ The client description also records the display name: **Managed by Vault role <t
 - **Client credentials**: the Vault lease, set by the role **ttl**/**max_ttl** (mount defaults when unset). Renewal extends it up to **max_ttl**.
 - **Access tokens** obtained with them: the **token_lifetime** of the Auth0 API (86400s by default). Tokens are JWTs and stay valid after the client is deleted, until they expire.
 
+## Managing leases
+
+Each dynamic client is tied to a Vault lease. Listing them goes through **sys/leases/lookup/** with the creds path as prefix, and needs the **sudo** capability on **sys/leases/lookup/***:
+
+```shell
+# Roles with active leases in a tenant
+vault list sys/leases/lookup/auth0/example/creds/
+
+# Leases of one role, and the details of one (expire time, TTL)
+vault list sys/leases/lookup/auth0/example/creds/ci/
+vault lease lookup auth0/example/creds/ci/<lease id>
+```
+
+Revoking a lease deletes its Auth0 client:
+
+```shell
+vault lease revoke auth0/example/creds/ci/<lease id>   # one lease
+vault lease revoke -prefix auth0/example/creds/ci      # every lease of a role
+vault lease revoke -prefix auth0/example/creds             # every lease of a tenant
+vault lease revoke -sync -prefix auth0/                    # the whole mount, waiting for the deletions
+```
+
+Avoid **-force**: it drops the leases from Vault even when the clients can't be deleted, leaving them in Auth0.
+
 ## Development
 
 | Command | Description |
