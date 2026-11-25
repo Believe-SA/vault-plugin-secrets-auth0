@@ -100,11 +100,18 @@ func (f *fakeAuth0) handleManagement(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case r.Method == http.MethodPost && r.URL.Path == "/api/v2/clients":
 		var c struct {
-			Name     string            `json:"name"`
-			Metadata map[string]string `json:"client_metadata"`
+			Name        string            `json:"name"`
+			Description string            `json:"description"`
+			Metadata    map[string]string `json:"client_metadata"`
 		}
 
 		_ = json.NewDecoder(r.Body).Decode(&c)
+		if len([]rune(c.Description)) > maxDescriptionLen {
+			writeJSON(w, 400, map[string]any{"statusCode": 400, "message": "description too long"})
+
+			return
+		}
+
 		f.next++
 		id := fmt.Sprintf("dyn-%d", f.next)
 		f.clients[id] = id + "-secret"
@@ -358,7 +365,7 @@ func TestNameTemplate(t *testing.T) {
 	}))
 
 	for display, want := range map[string]string{
-		"kubernetes-myns-vault":     "vault-kube-dyn",
+		"kubernetes-example-cluster-jwt-system:serviceaccount:my-namespace:my-namespace-with-a-rather-long-service-account-name": "vault-kube-dyn",
 		"oidc-john.doe@example.com": "vault-dyn-john.doe",
 	} {
 		resp, err := b.HandleRequest(context.Background(), &logical.Request{

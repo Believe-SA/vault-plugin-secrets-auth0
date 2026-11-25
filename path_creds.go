@@ -12,6 +12,9 @@ import (
 
 const walTypeClient = "client"
 
+// maxDescriptionLen is the Auth0 limit on client descriptions.
+const maxDescriptionLen = 140
+
 type walClient struct {
 	Tenant   string `json:"tenant" mapstructure:"tenant"`
 	ClientID string `json:"client_id" mapstructure:"client_id"`
@@ -54,8 +57,9 @@ func (b *backend) pathCredsRead(ctx context.Context, req *logical.Request, d *fr
 		return nil, err
 	}
 
-	clientID, clientSecret, err := c.createClient(ctx, appName,
-		fmt.Sprintf("Managed by Vault role %s/%s for %s", tenant, name, req.DisplayName), r.ClientMetadata)
+	desc := truncate(fmt.Sprintf("Managed by Vault role %s/%s for %s", tenant, name, req.DisplayName), maxDescriptionLen)
+
+	clientID, clientSecret, err := c.createClient(ctx, appName, desc, r.ClientMetadata)
 	if err != nil {
 		return nil, err
 	}
@@ -92,6 +96,16 @@ func (b *backend) pathCredsRead(ctx context.Context, req *logical.Request, d *fr
 	}
 
 	return resp, nil
+}
+
+// truncate cuts s to at most n characters.
+func truncate(s string, n int) string {
+	r := []rune(s)
+	if len(r) <= n {
+		return s
+	}
+
+	return string(r[:n])
 }
 
 // createGrants creates the grants of a client, in a stable order.
